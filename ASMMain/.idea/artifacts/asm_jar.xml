@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="asm:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/asm_jar</output-path>
+    <root id="archive" name="asm.jar">
+      <element id="module-output" name="asm" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/ow2/asm/asm/9.6/asm-9.6.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>
