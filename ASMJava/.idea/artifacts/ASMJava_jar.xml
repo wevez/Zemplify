@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="ASMJava:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/ASMJava_jar</output-path>
+    <root id="archive" name="ASMJava.jar">
+      <element id="module-output" name="ASMJava" />
+    </root>
+  </artifact>
+</component>

@@ -54,7 +54,7 @@ void loadJar(jobject classLoader, const unsigned char* jarBytes, size_t size)
         if (filename.substr(filename.size() - 6) != ".class")
             continue;
 
-        //printf("%s\n", filename.c_str());
+        printf("%s\n", filename.c_str());
         size_t classBytes_size = 0;
         unsigned char* classBytes = (unsigned char*)mz_zip_reader_extract_to_heap(&archive, i, &classBytes_size, 0);
         if (!classBytes)
@@ -84,7 +84,7 @@ jobject newClassLoader()
 {
     jclass urlClass = m_Env->FindClass("java/net/URL");
     jmethodID urlContructor = m_Env->GetMethodID(urlClass, "<init>", "(Ljava/lang/String;)V");
-    jstring str = m_Env->NewStringUTF("file://ftp.yoyodyne.com/pub/files/foobar.txt");
+    jstring str = m_Env->NewStringUTF("uuum.jp");
     jobject url = m_Env->NewObject(urlClass, urlContructor, str);
     jobjectArray urls = m_Env->NewObjectArray(1, urlClass, url);
     jclass URLClassLoaderClass = m_Env->FindClass("java/net/URLClassLoader");
@@ -103,8 +103,7 @@ jobject newClassLoader()
 void retransformClasses()
 {
     for (const auto m : m_CachedKlass) {
-        if (m.first._Equal("net.minecraft.client.renderer.entity.player.PlayerRenderer") || m.first._Equal("net.minecraft.client.renderer.GameRenderer")) {
-            printf("Found\n");
+        if (m.first.starts_with("net.minecraft.client.renderer")) {
             jvmtiEnvironment->RetransformClasses(1, &m.second);
         }
     }
@@ -125,33 +124,35 @@ void JNICALL ClassFileLoadHook
 )
 {
     if (!m_CachedKlass.contains(ASM_MAIN_CLASS)) {
-        printf("cache not found\n");
+        printf("ASM_MAIN_CLASS not found\n");
         return;
     }
-    
     jclass ClassPatcherClass = m_CachedKlass.at(ASM_MAIN_CLASS);
     jbyteArray original_class_bytes = jni_env->NewByteArray(class_data_len);
     jni_env->SetByteArrayRegion(original_class_bytes, 0, class_data_len, (const jbyte*)class_data);
 
     jmethodID patchMethodID = jni_env->GetStaticMethodID(ClassPatcherClass, ASM_MAIN_METHOD, "([BLjava/lang/String;Ljava/lang/String;)[B");
     if (!patchMethodID) {
-        printf("patchMethodID not found\n");
+        printf("; not found\n");
         return;
     }
-    jstring titleStr = jni_env->NewStringUTF(title);
-    jstring classNameStr = jni_env->NewStringUTF(name);
+    jstring methodToPatchStr = jni_env->NewStringUTF(title);
+    jstring ThreadContextClassName = jni_env->NewStringUTF(name);
+
     jbyteArray new_class_bytes = (jbyteArray)jni_env->CallStaticObjectMethod(
         ClassPatcherClass,
         patchMethodID,
         original_class_bytes,
-        titleStr,
-        classNameStr
+        methodToPatchStr,
+        ThreadContextClassName
     );
 
 
+    jni_env->DeleteLocalRef(original_class_bytes);
     *new_class_data_len = jni_env->GetArrayLength(new_class_bytes);
     jvmti_env->Allocate(*new_class_data_len, new_class_data);
     jni_env->GetByteArrayRegion(new_class_bytes, 0, *new_class_data_len, (jbyte*)*new_class_data);
+    jni_env->DeleteLocalRef(new_class_bytes);
 }
 
 /*
