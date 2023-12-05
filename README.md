@@ -4,7 +4,7 @@ You can modify any jvm based program through OW2 ASM with Zemplify.
 ## How to use
 ### Java(ASM) side
 - Make a function which returns a list of classes to modify.  
-In the following code, I'm going to modify the class which name is net.minecraft.client.Minecraft.
+In the following code, I'm going to modify the class which name is net.minecraft.client.gui.GuiScreen.
 ```Java
 public static String[] getDefineClasses(String windowName) {
     return new String[] {
@@ -63,3 +63,5 @@ With InteliJ IDEA, you can build a jar file with Build > Build Artifacts... > AS
 #define ASM_DEFINE_CLASSES_METHOD "getDefineClasses" // JavaのgetDefineClasses関数の名前を定義します
 #define ASM_RETRANSFORM_CLASSES { "net.minecraft.client.gui.GuiScreen" } // Retransformするべきクラスを定義します
 ```
+## Result
+![](image.png)
