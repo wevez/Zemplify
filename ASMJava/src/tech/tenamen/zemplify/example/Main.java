@@ -2,46 +2,7 @@ package tech.tenamen.zemplify.example;
 
 import tech.tenamen.asm.*;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
 public class Main {
-    public static void main(String[] args) {
-        // 実際のファイルパスに変更してください
-        String filePath = "C:\\Users\\ryo\\Documents\\Github\\Java\\Zemplify\\ASMJava\\out\\artifacts\\ASMJava_jar\\ASMJava.jar";
-
-        try {
-            // ファイルのパスを指定してバイトコードを取得
-            byte[] bytecode = readClassFile(filePath);
-
-            // FileWriterクラスのオブジェクトを生成する
-            FileWriter file = new FileWriter("C:\\Users\\ryo\\Documents\\Github\\Java\\Zemplify\\Dll1\\Dll1\\jarBytes.h");
-            // PrintWriterクラスのオブジェクトを生成する
-            PrintWriter pw = new PrintWriter(new BufferedWriter(file));
-
-            //ファイルに書き込む
-            pw.println("#pragma once");
-            pw.print("const unsigned char data[] = { ");
-            for (byte b : bytecode) {
-                pw.printf("0x%02X, ", b);
-            }
-            pw.print((" };"));
-            //ファイルを閉じる
-            pw.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static byte[] readClassFile(String filePath) throws IOException {
-        Path path = Paths.get(filePath);
-        return Files.readAllBytes(path);
-    }
 
     /**
      * bytecodeを受け取り、それをASMを用いて改造し、改造されたbytecodeを返します。

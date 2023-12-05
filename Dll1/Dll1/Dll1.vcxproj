@@ -145,7 +145,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
-    <ClInclude Include="jarBytes.h" />
     <ClInclude Include="jni\jni.h" />
     <ClInclude Include="jni\jni_md.h" />
     <ClInclude Include="jni\jvmti.h" />

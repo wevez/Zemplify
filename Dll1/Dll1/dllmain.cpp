@@ -3,10 +3,12 @@
 
 //#define MINIZ_HEADER_FILE_ONLY
 #include "miniz/miniz.c"
-#include "jarBytes.h"
 #include <filesystem>
-#include <functional>
 #include <fstream>
+#include <Windows.h>
+#include <Commdlg.h>
+#include <fstream>
+#include <vector>
 
 #define DEBUG_CONSOLE true // デバッグ用コンソールを表示する場合はtrueにします
 #define ASM_MAIN_CLASS "tech.tenamen.zemplify.example.Main" // ASMのメインクラスの場所を定義します
@@ -34,14 +36,60 @@ const char* GetName(jclass clz)
     return name;
 }
 
+// ファイル選択ダイアログを開く関数
+std::wstring openFileDialog() {
+    OPENFILENAME ofn;
+    wchar_t fileName[MAX_PATH] = L"";
+
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = NULL;
+    ofn.lpstrFile = fileName;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = L"All Files\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+    if (GetOpenFileName(&ofn) == TRUE) {
+        return fileName;
+    }
+    else {
+        return L"";
+    }
+}
+
+// ファイルをconst unsigned char[]型に読み込む関数
+std::vector<unsigned char> readFileToUnsignedCharArray(const std::wstring& filePath) {
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        printf("Error file opening\n");
+        return {};
+    }
+
+    // ファイルサイズを取得
+    file.seekg(0, std::ios::end);
+    std::streampos fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    // バッファを確保してファイルを読み込む
+    std::vector<unsigned char> buffer(fileSize);
+    file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
+    file.close();
+
+    return buffer;
+}
+
+
 void loadJar(jobject classLoader, const unsigned char* jarBytes, size_t size)
 {
     mz_zip_archive archive{};
     if (!mz_zip_reader_init_mem(&archive, jarBytes, size, 0))
     {
+        printf("!mz_zip_reader_init_mem(&archive, jarBytes, size, 0)\n");
         return;
     }
     mz_uint file_number = mz_zip_reader_get_num_files(&archive);
+    printf("zip file number: %d\n", file_number);
     for (mz_uint i = 0; i < file_number; i++)
     {
 
@@ -54,7 +102,7 @@ void loadJar(jobject classLoader, const unsigned char* jarBytes, size_t size)
         if (filename.substr(filename.size() - 6) != ".class")
             continue;
 
-        printf("%s\n", filename.c_str());
+        printf("Loading %s\n", filename.c_str());
         size_t classBytes_size = 0;
         unsigned char* classBytes = (unsigned char*)mz_zip_reader_extract_to_heap(&archive, i, &classBytes_size, 0);
         if (!classBytes)
@@ -133,7 +181,7 @@ void JNICALL ClassFileLoadHook
 
     jmethodID patchMethodID = jni_env->GetStaticMethodID(ClassPatcherClass, ASM_MAIN_METHOD, "([BLjava/lang/String;Ljava/lang/String;)[B");
     if (!patchMethodID) {
-        printf("; not found\n");
+        printf("patchMethodID not found\n");
         return;
     }
     jstring methodToPatchStr = jni_env->NewStringUTF(title);
@@ -208,8 +256,21 @@ DWORD APIENTRY Main(HMODULE hModule)
 
     jobject classLoader = newClassLoader();
 
-    loadJar(classLoader, data, sizeof(data));
+    std::wstring selectedFilePath = openFileDialog();
 
+    if (!selectedFilePath.empty()) {
+        // ファイルをconst unsigned char[]型に読み込む
+        std::vector<unsigned char> fileData = readFileToUnsignedCharArray(selectedFilePath);
+        const unsigned char* dataArray = fileData.data();
+        loadJar(classLoader, dataArray, fileData.size());
+        //size_t dataSize = fileData.size();
+
+        // 変換したデータを利用する例
+        //for (size_t i = 0; i < dataSize; ++i) {
+            //printf("%x\n", dataArray[i]);
+        //};
+    }
+    
     // GetLoadedClassesでクラスを取得し、キャッシュしておきます。
     // env->FindClassは正常に動作しない場合があるので、GetLoadedClassesを使用します。
     jclass* classes; jint classCount;
