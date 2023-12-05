@@ -37,6 +37,5 @@ public class Main {
         ClassReader classReader = new ClassReader(classBytes);
         classReader.accept(classVisitor, 0);
         return classWriter.toByteArray();
-
     }
 }
