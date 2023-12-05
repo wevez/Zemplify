@@ -14,13 +14,14 @@
 #define ASM_MAIN_CLASS "tech.tenamen.zemplify.example.Main" // ASMのメインクラスの場所を定義します
 #define ASM_MAIN_METHOD "main" // Javaのエントリーポイント関数の名前を定義します
 #define ASM_DEFINE_CLASSES_METHOD "getDefineClasses" // JavaのgetDefineClasses関数の名前を定義します
+#define ASM_RETRANSFORM_CLASSES { "net.minecraft.client.gui.GuiScreen" } // Retransformするべきクラスを定義します
 
 JavaVM* javaVM;
 JNIEnv* jniEnv;
 jvmtiEnv* jvmtiEnvironment;
 
 std::map<std::string, jclass> cachedKlass = std::map<std::string, jclass>();
-std::vector<const char*> shouldDefineClasses = std::vector<const char*>();
+std::vector<const char*> shouldDefineClasses = ASM_RETRANSFORM_CLASSES;
 
 HWND currentWindowHandle;
 char title[128];
@@ -155,11 +156,9 @@ std::vector<const char*> getShouldDefineClasses()
             printf("%d is null\n", i);
             continue;
         }
-        jboolean* isCopy = new jboolean(true);
-        const char* c = jniEnv->GetStringUTFChars(currentItem, isCopy);
-        retVal.push_back(c);
-        //printf("index: %s", c);
-        delete(isCopy);
+        const char* c = jniEnv->GetStringUTFChars(currentItem, 0);
+        retVal.push_back(std::string(c).c_str());
+        printf("index: %s\n", c);
     }
 }
 
@@ -194,7 +193,7 @@ void retransformClasses()
             }
         }
         if (shouldRetransform) {
-            printf("Retransform class: %s", m.first.c_str());
+            printf("Retransforming class: %s\n", m.first.c_str());
             jvmtiEnvironment->RetransformClasses(1, &m.second);
         }
     }
@@ -309,14 +308,15 @@ DWORD APIENTRY Main(HMODULE hModule)
     
     // GetLoadedClassesでクラスを取得し、キャッシュしておきます。
     // env->FindClassは正常に動作しない場合があるので、GetLoadedClassesを使用します。
-    jclass* classes; jint classCount;
+    jclass* classes;
+    jint classCount;
     jvmtiEnvironment->GetLoadedClasses(&classCount, &classes);
     for (int i = 0; i < classCount; i++)
     {
         auto klass = classes[i];
         cachedKlass.emplace(std::make_pair(GetName(klass), klass));
     }
-    shouldDefineClasses = getShouldDefineClasses();
+    //shouldDefineClasses = getShouldDefineClasses();
     retransformClasses();
     jvmtiEnvironment->SetEventNotificationMode(JVMTI_DISABLE, JVMTI_EVENT_CLASS_FILE_LOAD_HOOK, NULL);
 
