@@ -13,12 +13,14 @@
 #define DEBUG_CONSOLE true // デバッグ用コンソールを表示する場合はtrueにします
 #define ASM_MAIN_CLASS "tech.tenamen.zemplify.example.Main" // ASMのメインクラスの場所を定義します
 #define ASM_MAIN_METHOD "main" // Javaのエントリーポイント関数の名前を定義します
+#define ASM_DEFINE_CLASSES_METHOD "getDefineClasses" // JavaのgetDefineClasses関数の名前を定義します
 
-JavaVM* m_Jvm;
-JNIEnv* m_Env;
+JavaVM* javaVM;
+JNIEnv* jniEnv;
 jvmtiEnv* jvmtiEnvironment;
 
-std::map<std::string, jclass> m_CachedKlass = std::map<std::string, jclass>();
+std::map<std::string, jclass> cachedKlass = std::map<std::string, jclass>();
+std::vector<const char*> shouldDefineClasses = std::vector<const char*>();
 
 HWND currentWindowHandle;
 char title[128];
@@ -28,11 +30,11 @@ char title[128];
 */
 const char* GetName(jclass clz)
 {
-    const auto cls = m_Env->FindClass("java/lang/Class");
-    const auto mid_getName = m_Env->GetMethodID(cls, "getName", "()Ljava/lang/String;");
-    const auto jname = (jstring)m_Env->CallObjectMethod(clz, mid_getName);
-    const char* name = m_Env->GetStringUTFChars(jname, 0);
-    m_Env->ReleaseStringUTFChars(jname, name);
+    const auto cls = jniEnv->FindClass("java/lang/Class");
+    const auto mid_getName = jniEnv->GetMethodID(cls, "getName", "()Ljava/lang/String;");
+    const auto jname = (jstring)jniEnv->CallObjectMethod(clz, mid_getName);
+    const char* name = jniEnv->GetStringUTFChars(jname, 0);
+    jniEnv->ReleaseStringUTFChars(jname, name);
     return name;
 }
 
@@ -111,8 +113,8 @@ void loadJar(jobject classLoader, const unsigned char* jarBytes, size_t size)
             return;
         }
 
-        jclass jaclass = m_Env->DefineClass(nullptr, classLoader, (const jbyte*)classBytes, classBytes_size);
-        if (jaclass) m_Env->DeleteLocalRef(jaclass);
+        jclass jaclass = jniEnv->DefineClass(nullptr, classLoader, (const jbyte*)classBytes, classBytes_size);
+        if (jaclass) jniEnv->DeleteLocalRef(jaclass);
         mz_free(classBytes);
     }
     mz_zip_reader_end(&archive);
@@ -122,36 +124,77 @@ void loadJar(jobject classLoader, const unsigned char* jarBytes, size_t size)
 
 void gc()
 {
-    jclass System_class = m_Env->FindClass("java/lang/System");
-    jmethodID gcID = m_Env->GetStaticMethodID(System_class, "gc", "()V");
-    m_Env->CallStaticVoidMethod(System_class, gcID);
-    m_Env->DeleteLocalRef(System_class);
+    jclass System_class = jniEnv->FindClass("java/lang/System");
+    jmethodID gcID = jniEnv->GetStaticMethodID(System_class, "gc", "()V");
+    jniEnv->CallStaticVoidMethod(System_class, gcID);
+    jniEnv->DeleteLocalRef(System_class);
+}
+
+std::vector<const char*> getShouldDefineClasses()
+{
+    if (!cachedKlass.contains(ASM_MAIN_CLASS)) {
+        printf("ASM_MAIN_CLASS not found\n");
+        return {};
+    }
+    jclass ClassPatcherClass = cachedKlass.at(ASM_MAIN_CLASS);
+    jmethodID getDefineClassesID = jniEnv->GetStaticMethodID(ClassPatcherClass, ASM_DEFINE_CLASSES_METHOD, "(Ljava/lang/String;)[Ljava/lang/String;");
+    if (!getDefineClassesID) {
+        printf("getDefineClassesID not found\n");
+        return {};
+    }
+    jstring methodToPatchStr = jniEnv->NewStringUTF(title);
+    jobjectArray defineClassRetValue = (jobjectArray)jniEnv->CallStaticObjectMethod(ClassPatcherClass, getDefineClassesID, title);
+    if (!defineClassRetValue) {
+        printf("getDefineClassRetValue might be empty\n");
+        return {};
+    }
+    std::vector<const char*> retVal = std::vector<const char*>();
+    for (int i = 0, l = jniEnv->GetArrayLength(defineClassRetValue); i < l; i++) {
+        jstring currentItem = (jstring)jniEnv->GetObjectArrayElement(defineClassRetValue, i);
+        if (!currentItem) {
+            printf("%d is null\n", i);
+            continue;
+        }
+        jboolean* isCopy = new jboolean(true);
+        const char* c = jniEnv->GetStringUTFChars(currentItem, isCopy);
+        retVal.push_back(c);
+        //printf("index: %s", c);
+        delete(isCopy);
+    }
 }
 
 jobject newClassLoader()
 {
-    jclass urlClass = m_Env->FindClass("java/net/URL");
-    jmethodID urlContructor = m_Env->GetMethodID(urlClass, "<init>", "(Ljava/lang/String;)V");
-    jstring str = m_Env->NewStringUTF("uuum.jp");
-    jobject url = m_Env->NewObject(urlClass, urlContructor, str);
-    jobjectArray urls = m_Env->NewObjectArray(1, urlClass, url);
-    jclass URLClassLoaderClass = m_Env->FindClass("java/net/URLClassLoader");
-    jmethodID URLClassLoaderContructor = m_Env->GetMethodID(URLClassLoaderClass, "<init>", "([Ljava/net/URL;)V");
-    jobject URLClassLoader = m_Env->NewObject(URLClassLoaderClass, URLClassLoaderContructor, urls);
+    jclass urlClass = jniEnv->FindClass("java/net/URL");
+    jmethodID urlContructor = jniEnv->GetMethodID(urlClass, "<init>", "(Ljava/lang/String;)V");
+    jstring str = jniEnv->NewStringUTF("uuum.jp");
+    jobject url = jniEnv->NewObject(urlClass, urlContructor, str);
+    jobjectArray urls = jniEnv->NewObjectArray(1, urlClass, url);
+    jclass URLClassLoaderClass = jniEnv->FindClass("java/net/URLClassLoader");
+    jmethodID URLClassLoaderContructor = jniEnv->GetMethodID(URLClassLoaderClass, "<init>", "([Ljava/net/URL;)V");
+    jobject URLClassLoader = jniEnv->NewObject(URLClassLoaderClass, URLClassLoaderContructor, urls);
 
-    m_Env->DeleteLocalRef(urlClass);
-    m_Env->DeleteLocalRef(url);
-    m_Env->DeleteLocalRef(str);
-    m_Env->DeleteLocalRef(urls);
-    m_Env->DeleteLocalRef(URLClassLoaderClass);
+    jniEnv->DeleteLocalRef(urlClass);
+    jniEnv->DeleteLocalRef(url);
+    jniEnv->DeleteLocalRef(str);
+    jniEnv->DeleteLocalRef(urls);
+    jniEnv->DeleteLocalRef(URLClassLoaderClass);
 
     return URLClassLoader;
 }
 
 void retransformClasses()
 {
-    for (const auto m : m_CachedKlass) {
-        if (m.first.starts_with("net.minecraft.client.renderer")) {
+    for (const auto m : cachedKlass) {
+        bool shouldRetransform = false;
+        for (const char* c : shouldDefineClasses) {
+            if (m.first._Equal(c)) {
+                shouldRetransform = true;
+                break;
+            }
+        }
+        if (shouldRetransform) {
+            printf("Retransform class: %s", m.first.c_str());
             jvmtiEnvironment->RetransformClasses(1, &m.second);
         }
     }
@@ -171,11 +214,11 @@ void JNICALL ClassFileLoadHook
     unsigned char** new_class_data
 )
 {
-    if (!m_CachedKlass.contains(ASM_MAIN_CLASS)) {
+    if (!cachedKlass.contains(ASM_MAIN_CLASS)) {
         printf("ASM_MAIN_CLASS not found\n");
         return;
     }
-    jclass ClassPatcherClass = m_CachedKlass.at(ASM_MAIN_CLASS);
+    jclass ClassPatcherClass = cachedKlass.at(ASM_MAIN_CLASS);
     jbyteArray original_class_bytes = jni_env->NewByteArray(class_data_len);
     jni_env->SetByteArrayRegion(original_class_bytes, 0, class_data_len, (const jbyte*)class_data);
 
@@ -194,7 +237,6 @@ void JNICALL ClassFileLoadHook
         methodToPatchStr,
         ThreadContextClassName
     );
-
 
     jni_env->DeleteLocalRef(original_class_bytes);
     *new_class_data_len = jni_env->GetArrayLength(new_class_bytes);
@@ -228,20 +270,20 @@ DWORD APIENTRY Main(HMODULE hModule)
     }
     // JavaVMを取得します。
     jsize vmCount = 0;
-    if (JNI_GetCreatedJavaVMs(&m_Jvm, 1, &vmCount) != JNI_OK || vmCount == 0) {
+    if (JNI_GetCreatedJavaVMs(&javaVM, 1, &vmCount) != JNI_OK || vmCount == 0) {
         printf("JNI_GetCreatedJavaVMs(&m_Jvm, 1, &vmCount) != JNI_OK || vmCount == 0\n");
         return 0;
     }
     // JNIEnvを取得します。
-    jint res = m_Jvm->GetEnv(reinterpret_cast<void**>(&m_Env), JNI_VERSION_1_6);
+    jint res = javaVM->GetEnv(reinterpret_cast<void**>(&jniEnv), JNI_VERSION_1_6);
     if (res == JNI_EDETACHED) {
-        if (m_Jvm->AttachCurrentThread(reinterpret_cast<void**>(&m_Env), nullptr) != JNI_OK) {
+        if (javaVM->AttachCurrentThread(reinterpret_cast<void**>(&jniEnv), nullptr) != JNI_OK) {
             printf("m_Jvm->AttachCurrentThread(reinterpret_cast<void**>(&m_Env), nullptr) != JNI_OK\n");
             return 0;
         }
     }
     // jvmtiEnvを取得します。
-    if (m_Jvm->GetEnv((void**)&jvmtiEnvironment, JVMTI_VERSION_1_1) != JNI_OK) {
+    if (javaVM->GetEnv((void**)&jvmtiEnvironment, JVMTI_VERSION_1_1) != JNI_OK) {
         printf("m_Jvm->GetEnv((void**)&jvmtiEnvironment, JVMTI_VERSION_1_1) != JNI_OK\n");
         return 0;
     }
@@ -263,12 +305,6 @@ DWORD APIENTRY Main(HMODULE hModule)
         std::vector<unsigned char> fileData = readFileToUnsignedCharArray(selectedFilePath);
         const unsigned char* dataArray = fileData.data();
         loadJar(classLoader, dataArray, fileData.size());
-        //size_t dataSize = fileData.size();
-
-        // 変換したデータを利用する例
-        //for (size_t i = 0; i < dataSize; ++i) {
-            //printf("%x\n", dataArray[i]);
-        //};
     }
     
     // GetLoadedClassesでクラスを取得し、キャッシュしておきます。
@@ -278,18 +314,18 @@ DWORD APIENTRY Main(HMODULE hModule)
     for (int i = 0; i < classCount; i++)
     {
         auto klass = classes[i];
-        m_CachedKlass.emplace(std::make_pair(GetName(klass), klass));
+        cachedKlass.emplace(std::make_pair(GetName(klass), klass));
     }
-
+    shouldDefineClasses = getShouldDefineClasses();
     retransformClasses();
     jvmtiEnvironment->SetEventNotificationMode(JVMTI_DISABLE, JVMTI_EVENT_CLASS_FILE_LOAD_HOOK, NULL);
 
-    m_Env->DeleteLocalRef(classLoader);
+    jniEnv->DeleteLocalRef(classLoader);
     gc();
 
     Sleep(1000);
     // JVMTIを終了させます。
-    m_Jvm->DetachCurrentThread();
+    javaVM->DetachCurrentThread();
     // コンソールを非表示にします
     if (DEBUG_CONSOLE) {
         ShowWindow(GetConsoleWindow(), SW_HIDE);
