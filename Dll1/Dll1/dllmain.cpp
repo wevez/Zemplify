@@ -14,14 +14,13 @@
 #define ASM_MAIN_CLASS "tech.tenamen.zemplify.example.Main" // ASMのメインクラスの場所を定義します
 #define ASM_MAIN_METHOD "main" // Javaのエントリーポイント関数の名前を定義します
 #define ASM_DEFINE_CLASSES_METHOD "getDefineClasses" // JavaのgetDefineClasses関数の名前を定義します
-#define ASM_RETRANSFORM_CLASSES { "net.minecraft.client.gui.GuiScreen" } // Retransformするべきクラスを定義します
 
 JavaVM* javaVM;
 JNIEnv* jniEnv;
 jvmtiEnv* jvmtiEnvironment;
 
 std::map<std::string, jclass> cachedKlass = std::map<std::string, jclass>();
-std::vector<const char*> shouldDefineClasses = ASM_RETRANSFORM_CLASSES;
+std::vector<std::string> shouldDefineClasses = std::vector<std::string>();
 
 HWND currentWindowHandle;
 char title[128];
@@ -131,7 +130,7 @@ void gc()
     jniEnv->DeleteLocalRef(System_class);
 }
 
-std::vector<const char*> getShouldDefineClasses()
+std::vector<std::string> getShouldDefineClasses()
 {
     if (!cachedKlass.contains(ASM_MAIN_CLASS)) {
         printf("ASM_MAIN_CLASS not found\n");
@@ -149,7 +148,7 @@ std::vector<const char*> getShouldDefineClasses()
         printf("getDefineClassRetValue might be empty\n");
         return {};
     }
-    std::vector<const char*> retVal = std::vector<const char*>();
+    std::vector<std::string> retVal = std::vector<std::string>();
     for (int i = 0, l = jniEnv->GetArrayLength(defineClassRetValue); i < l; i++) {
         jstring currentItem = (jstring)jniEnv->GetObjectArrayElement(defineClassRetValue, i);
         if (!currentItem) {
@@ -157,9 +156,10 @@ std::vector<const char*> getShouldDefineClasses()
             continue;
         }
         const char* c = jniEnv->GetStringUTFChars(currentItem, 0);
-        retVal.push_back(std::string(c).c_str());
-        printf("index: %s\n", c);
+        retVal.push_back(std::string(c));
+        //printf("index: %s\n", c);
     }
+    return retVal;
 }
 
 jobject newClassLoader()
@@ -186,8 +186,8 @@ void retransformClasses()
 {
     for (const auto m : cachedKlass) {
         bool shouldRetransform = false;
-        for (const char* c : shouldDefineClasses) {
-            if (m.first._Equal(c)) {
+        for (std::string c : shouldDefineClasses) {
+            if (m.first._Equal(c.c_str())) {
                 shouldRetransform = true;
                 break;
             }
@@ -316,7 +316,7 @@ DWORD APIENTRY Main(HMODULE hModule)
         auto klass = classes[i];
         cachedKlass.emplace(std::make_pair(GetName(klass), klass));
     }
-    //shouldDefineClasses = getShouldDefineClasses();
+    shouldDefineClasses = getShouldDefineClasses();
     retransformClasses();
     jvmtiEnvironment->SetEventNotificationMode(JVMTI_DISABLE, JVMTI_EVENT_CLASS_FILE_LOAD_HOOK, NULL);
 

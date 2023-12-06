@@ -61,7 +61,6 @@ With InteliJ IDEA, you can build a jar file with Build > Build Artifacts... > AS
 #define ASM_MAIN_CLASS "tech.tenamen.zemplify.example.Main" // ASMのメインクラスの場所を定義します
 #define ASM_MAIN_METHOD "main" // Javaのエントリーポイント関数の名前を定義します
 #define ASM_DEFINE_CLASSES_METHOD "getDefineClasses" // JavaのgetDefineClasses関数の名前を定義します
-#define ASM_RETRANSFORM_CLASSES { "net.minecraft.client.gui.GuiScreen" } // Retransformするべきクラスを定義します
 ```
 ## Result
 ![](image.png)
